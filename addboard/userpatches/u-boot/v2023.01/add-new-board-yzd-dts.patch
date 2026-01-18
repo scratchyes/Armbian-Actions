@@ -1,9 +1,9 @@
 --- a/arch/arm/dts/Makefile	2024-09-15 11:59:05.103312000 +0800
 +++ a/arch/arm/dts/Makefile	2024-09-15 11:38:23.051579300 +0800
 @@ -166,6 +166,7 @@
- 	rk3399-orangepi-4.dtb \
  	rk3399-pinebook-pro.dtb \
  	rk3399-puma-haikou.dtb \
+ 	rk3399-sg2710.dtb \
 +	rk3399-yzd.dtb \
  	rk3399-roc-pc.dtb \
  	rk3399-roc-pc-mezzanine.dtb \
