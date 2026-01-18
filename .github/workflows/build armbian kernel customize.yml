@@ -10,12 +10,14 @@ on:
         type: choice
         options:
           - fine3399
+          - fmx1-pro
           - r08
           - rock960
           - sg2710
           - tpm312
           - tb-ls3399
           - xiaobao-nas
+          - yzd
           - zysj
       BRANCH:  
         description: 'Armbian kernel branch'  
