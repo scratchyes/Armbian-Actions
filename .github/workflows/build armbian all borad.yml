@@ -78,6 +78,9 @@ jobs:
       - name: Checkout  
         uses: actions/checkout@v3    
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Initialization environment
         id: init
         env:
@@ -111,6 +114,8 @@ jobs:
           cp -rf ${{ github.workspace }}/addboard/config/* config
           mkdir -p userpatches
           cp -rf ${{ github.workspace }}/addboard/userpatches/* userpatches
+          # 创建 extensions 目录以避免扩展查找失败
+          mkdir -p userpatches/extensions
           ls -la
   
       - name: Compile Armbian [ ${{ inputs.BOARD }} ${{ inputs.RELEASE }} ] 
@@ -131,6 +136,8 @@ jobs:
               > "log-${BOARD}.txt" 2>&1
             if [ $? -ne 0 ]; then
               echo "Compilation failed for board: $BOARD" >&2
+              echo "=== Log content for $BOARD ===" >&2
+              cat "log-${BOARD}.txt" >&2
               return 1
             fi
             return 0
