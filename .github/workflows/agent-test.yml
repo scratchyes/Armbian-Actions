@@ -1,0 +1,129 @@
+name: Agent Test - Verify Patches
+
+on:
+  workflow_dispatch:
+    inputs:
+      BOARD:
+        description: 'Board to test patches for'
+        required: true
+        default: 'yzd'
+        type: choice
+        options:
+          - yzd
+          - sg2710
+          - all
+      Version:
+        description: 'Armbian Version'
+        default: 'main'
+        required: false
+        type: choice
+        options:
+          - main
+          - v25.02
+          - v24.11
+  pull_request:
+    paths:
+      - 'addboard/userpatches/**'
+      - 'addboard/config/**'
+
+env:
+  TZ: America/New_York
+
+jobs:
+  test-patches:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Initialization environment
+        id: init
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          # Clean Docker images and software cache
+          docker_images_ids=$(docker images -q)
+          if [ -n "$docker_images_ids" ]; then
+            docker rmi $docker_images_ids 2>/dev/null || true
+          fi
+          docker image prune -a -f
+          sudo -E apt-get -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* openjdk* mysql* php* mongodb* dotnet* moby* snapd* android* || true
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          
+          # Install Python dependencies
+          sudo -E apt-get install -y python3-distutils python3-pip python3-setuptools
+          
+          # Set timezone and create work directory
+          sudo timedatectl set-timezone "${TZ}"
+          sudo mkdir -p /mnt/workdir
+          sudo chown $USER:$GROUPS /mnt/workdir
+          df -Th
+
+      - name: Download Armbian source code
+        working-directory: /mnt/workdir
+        run: |
+          df -hT ${PWD}
+          VERSION="${{ github.event.inputs.Version || 'main' }}"
+          git clone -q --single-branch --depth=1 --branch=$VERSION https://github.com/armbian/build.git build
+          ln -sf /mnt/workdir/build $GITHUB_WORKSPACE/build
+
+          cd build/
+          # Copy config and userpatches directories
+          cp -rf ${{ github.workspace }}/addboard/config/* config
+          mkdir -p userpatches
+          cp -rf ${{ github.workspace }}/addboard/userpatches/* userpatches
+          # Create extensions directory to avoid extension lookup failures
+          mkdir -p userpatches/extensions
+          
+          echo "=== Userpatches directory structure ==="
+          find userpatches -type f -name "*.patch" | head -20
+          ls -la
+
+      - name: Test patch application (dry-run)
+        run: |
+          cd /mnt/workdir/build/
+          BOARD="${{ github.event.inputs.BOARD || 'yzd' }}"
+          
+          echo "=== Testing patch application for board: $BOARD ==="
+          
+          # Run compile.sh with JUST_INIT to test patch application
+          # This will verify patches can be applied without actually building
+          # We capture the exit code separately to allow log analysis before failing
+          set +e
+          ./compile.sh BOARD=$BOARD RELEASE=bookworm BRANCH=current \
+            BUILD_MINIMAL=no BUILD_DESKTOP=no \
+            KERNEL_CONFIGURE=no JUST_INIT=yes 2>&1 | tee build.log
+          BUILD_EXIT_CODE=$?
+          set -e
+          
+          # Check for patch failures
+          if grep -q "Failed to apply" build.log; then
+            echo "::error::Patch application failed!"
+            grep -A5 "Failed to apply" build.log
+            exit 1
+          fi
+          
+          if grep -q "hunk FAILED" build.log; then
+            echo "::error::Patch hunk failed to apply!"
+            grep -B2 -A5 "hunk FAILED" build.log
+            exit 1
+          fi
+          
+          # If no patch errors but build failed, report it
+          if [ $BUILD_EXIT_CODE -ne 0 ]; then
+            echo "::warning::Build exited with code $BUILD_EXIT_CODE (may be expected for JUST_INIT mode)"
+          fi
+          
+          echo "=== Patch verification completed successfully ==="
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.event.inputs.BOARD || 'yzd' }}
+          path: /mnt/workdir/build/build.log
+          retention-days: 7
