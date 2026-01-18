@@ -17,6 +17,7 @@ on:
           - tpm312
           - tb-ls3399
           - xiaobao-nas
+          - yzd
           - zysj
       BRANCH:  
         description: 'Armbian branch'  
