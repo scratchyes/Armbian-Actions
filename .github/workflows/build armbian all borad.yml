@@ -137,7 +137,11 @@ jobs:
             if [ $? -ne 0 ]; then
               echo "Compilation failed for board: $BOARD" >&2
               echo "=== Log content for $BOARD ===" >&2
-              cat "log-${BOARD}.txt" >&2
+              if [ -f "log-${BOARD}.txt" ]; then
+                cat "log-${BOARD}.txt" >&2
+              else
+                echo "Log file log-${BOARD}.txt not found" >&2
+              fi
               return 1
             fi
             return 0
