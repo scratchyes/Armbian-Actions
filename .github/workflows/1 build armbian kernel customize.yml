@@ -1,4 +1,4 @@
-name: Build Armbian Customize Board
+name: 1 Build Armbian Kernel Customize
   
 on:  
   workflow_dispatch:  
@@ -20,7 +20,7 @@ on:
           - yzd
           - zysj
       BRANCH:  
-        description: 'Armbian branch'  
+        description: 'Armbian kernel branch'  
         default: 'current'  
         required: false 
         type: choice 
@@ -35,9 +35,9 @@ on:
         type: choice
         options:
           - jammy
-          - bookworm
           - noble
           - bullseye
+          - bookworm
       Version:
         description: 'Armbian Version'
         default: 'main'
@@ -47,19 +47,7 @@ on:
           - main
           - v25.02
           - v24.11
-          - v24.08
-      BUILD_DESKTOP:  
-        description: 'Build desktop environment'  
-        default: 'no'  
-        required: false  
-        type: choice
-        options:
-          - no
-      COMPRESS_OUTPUTIMAGE:  
-        description: 'Compress output image'  
-        default: 'sha,xz'  
-        required: false  
-        type: string  
+          - v24.08  
       BOOT_LOGO:  
         description: 'Include boot logo'  
         default: 'yes'  
@@ -72,12 +60,12 @@ env:
   TZ: America/New_York
   
 jobs:  
-  build-armbian:  
+  build-armbian-kernel:  
     runs-on: ubuntu-22.04  
     steps:  
       - name: Checkout  
-        uses: actions/checkout@v3  
-      
+        uses: actions/checkout@v3   
+        
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -95,16 +83,12 @@ jobs:
           sudo -E apt-get -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* openjdk* mysql* php* mongodb* dotnet* moby* snapd* android* || true
           sudo -E apt-get -qq autoremove --purge
           sudo -E apt-get -qq clean
-          
-          # 安装兼容的 Python 依赖
-          sudo -E apt-get install -y python3-distutils python3-pip python3-setuptools
-          
           # 设置时区并创建工作目录
           sudo timedatectl set-timezone "${TZ}"
           sudo mkdir -p /mnt/workdir
           sudo chown $USER:$GROUPS /mnt/workdir
           df -Th
-  
+        
       - name: Download source code
         working-directory: /mnt/workdir
         run: |
@@ -121,15 +105,15 @@ jobs:
           mkdir -p userpatches/extensions
           ls -la
   
-      - name: Compile Armbian [ ${{ inputs.BOARD }} ${{ inputs.RELEASE }} ] 
+      - name: Compile Armbian Kernel [ ${{ inputs.BOARD }} ${{ inputs.RELEASE }} ] 
         run: |  
-          cd /mnt/workdir/build/ 
-          ./compile.sh BOARD=${{ inputs.BOARD }} RELEASE=${{ inputs.RELEASE }} BRANCH=${{ inputs.BRANCH }} BUILD_MINIMAL=no BUILD_DESKTOP=${{ inputs.BUILD_DESKTOP }} \
-                           KERNEL_CONFIGURE=no COMPRESS_OUTPUTIMAGE=${{ inputs.COMPRESS_OUTPUTIMAGE }} BOOT_LOGO=${{ inputs.BOOT_LOGO }} 
-          
+          cd /mnt/workdir/build/  
+          ./compile.sh BOARD=${{ inputs.BOARD }} RELEASE=${{ inputs.RELEASE }} BRANCH=${{ inputs.BRANCH }} BUILD_MINIMAL=no \
+                           BUILD_DESKTOP=no KERNEL_CONFIGURE=no COMPRESS_OUTPUTIMAGE=sha,xz BOOT_LOGO=${{ inputs.BOOT_LOGO }} 
+
       - name: Set current year and month  
         run: |  
-          echo "CURRENT_YEAR_MONTH=$(date +'%Y%m')" >> $GITHUB_ENV  
+          echo "CURRENT_YEAR_MONTH=$(date +'%Y%m')" >> $GITHUB_ENV 
 
       - name: Prepare Release Metadata
         run: |  
@@ -137,10 +121,64 @@ jobs:
           # latest_image=$(ls ${{ github.workspace }}/build/output/images/Armbian-unofficial_*.img.xz | grep -oE 'Armbian-unofficial_[0-9.]+_.*' | sort -V | tail -n 1) 
           latest_image=$(ls ${{ github.workspace }}/build/output/images/Armbian-unofficial_*.img.xz | sort -V | tail -n 1)
           version=$(echo "$latest_image" | cut -d'_' -f2)  
+          
+          # 提取板子型号  
+          board_model=$(echo "$latest_image" | cut -d'_' -f3)  
+          
+          # 由于我们不想在awk中处理扩展名，我们可以先删除它  
+          filename_no_ext=$(echo "$latest_image" | sed 's/\.img\.xz$//')  
   
+          # 然后使用awk提取版本号
+          kernel_version=$(echo "$filename_no_ext" | awk -F'_' '{print $(NF)}') 
+  
+          echo "Latest Image: $latest_image"  
+          echo "Version: $version"  
+          echo "Board Model: $board_model"  
+          echo "Kernel Version: $kernel_version"
+      
           # 将版本号设置为环境变量  
           echo "VERSION=$version" >> $GITHUB_ENV
+          echo "BOARD_MODEL=$board_model" >> $GITHUB_ENV 
+          echo "KERNEL_VERSION=$kernel_version" >> $GITHUB_ENV
+         
+      - name: Prepare Kernel Packages  
+        run: |  
+          cd "${GITHUB_WORKSPACE}/build/output/packages-hashed/"
+          file=$(find . -maxdepth 1 -type f -name 'kernel-*.tar' | head -n 1)  
+   
+          # 检查是否找到了文件  
+          if [ -n "$file" ]; then  
+            echo "Found file: $file"  
+            # 重命名文件  
+            mv "$file" "kernel_${{ env.KERNEL_VERSION }}_${{ env.BOARD_MODEL }}.tar"  
+            echo "Renamed file to: kernel_${{ env.KERNEL_VERSION }}_${{ env.BOARD_MODEL }}.tar"  
+            # 列出目录中的文件以验证重命名  
+            ls -l  
+            echo "Directory listing after renaming:"  
+            find . -maxdepth 1 -type f 
+          else  
+            echo "No matching file found."  
+          fi        
         
+      - name: Upload Kernel Packages to Release  
+        if: success()  
+        uses: ncipollo/release-action@main  
+        with:  
+          tag: "Armbian_Kernel"
+          name: "Armbian_Kernel"
+          artifacts: "${{ github.workspace }}/build/output/packages-hashed/kernel_${{ env.KERNEL_VERSION }}_${{ env.BOARD_MODEL }}.tar"  
+          allowUpdates: true  
+          removeArtifacts: false  
+          replacesArtifacts: true  
+          token: ${{ secrets.GITHUB_TOKEN }}  
+          body: |  
+            ### Armbian Kernel Packages  
+            - The kernel can be used to compile Armbian
+            - Usage method: After unzipping, install the deb packages in order
+            - Deb Packages: linux-dtb | linux-headers | linux-image | linux-libc-dev
+          draft: false  
+          prerelease: false    
+          
       - name: Upload image to Release  
         if: success() 
         uses: ncipollo/release-action@main
@@ -159,4 +197,4 @@ jobs:
             ### Armbian Image Verification  
             - sha256sum   
           draft: false  
-          prerelease: false  
+          prerelease: false 
