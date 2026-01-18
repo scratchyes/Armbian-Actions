@@ -1,4 +1,4 @@
-name: Build Armbian Kernel Customize
+name: 1 Build Armbian Kernel Customize
   
 on:  
   workflow_dispatch:  
@@ -66,6 +66,9 @@ jobs:
       - name: Checkout  
         uses: actions/checkout@v3   
         
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Initialization environment
         id: init
         env:
@@ -98,6 +101,8 @@ jobs:
           cp -rf ${{ github.workspace }}/addboard/config/* config
           mkdir -p userpatches
           cp -rf ${{ github.workspace }}/addboard/userpatches/* userpatches
+          # 创建 extensions 目录以避免扩展查找失败
+          mkdir -p userpatches/extensions
           ls -la
   
       - name: Compile Armbian Kernel [ ${{ inputs.BOARD }} ${{ inputs.RELEASE }} ] 

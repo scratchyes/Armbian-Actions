@@ -1,4 +1,4 @@
-name: Build Armbian Customize Board
+name: 1 Build Armbian All Borad
   
 on:  
   workflow_dispatch:  
@@ -6,9 +6,10 @@ on:
       BOARD:  
         description: 'Board type'  
         required: true 
-        default: 'tpm312'
+        default: 'all'
         type: choice
         options:
+          - all
           - fine3399
           - fmx1-pro
           - r08
@@ -25,7 +26,6 @@ on:
         required: false 
         type: choice 
         options:
-          - stable
           - current
           - edge
       RELEASE:  
@@ -76,8 +76,11 @@ jobs:
     runs-on: ubuntu-22.04  
     steps:  
       - name: Checkout  
-        uses: actions/checkout@v3  
-      
+        uses: actions/checkout@v3    
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Initialization environment
         id: init
         env:
@@ -92,9 +95,6 @@ jobs:
           sudo -E apt-get -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* openjdk* mysql* php* mongodb* dotnet* moby* snapd* android* || true
           sudo -E apt-get -qq autoremove --purge
           sudo -E apt-get -qq clean
-          
-          # 安装兼容的 Python 依赖
-          sudo -E apt-get install -y python3-distutils python3-pip python3-setuptools
           
           # 设置时区并创建工作目录
           sudo timedatectl set-timezone "${TZ}"
@@ -114,13 +114,76 @@ jobs:
           cp -rf ${{ github.workspace }}/addboard/config/* config
           mkdir -p userpatches
           cp -rf ${{ github.workspace }}/addboard/userpatches/* userpatches
+          # 创建 extensions 目录以避免扩展查找失败
+          mkdir -p userpatches/extensions
           ls -la
   
       - name: Compile Armbian [ ${{ inputs.BOARD }} ${{ inputs.RELEASE }} ] 
-        run: |  
-          cd /mnt/workdir/build/ 
-          ./compile.sh BOARD=${{ inputs.BOARD }} RELEASE=${{ inputs.RELEASE }} BRANCH=${{ inputs.BRANCH }} BUILD_MINIMAL=no BUILD_DESKTOP=${{ inputs.BUILD_DESKTOP }} \
-                           KERNEL_CONFIGURE=no COMPRESS_OUTPUTIMAGE=${{ inputs.COMPRESS_OUTPUTIMAGE }} BOOT_LOGO=${{ inputs.BOOT_LOGO }} 
+        run: |
+          # 进入编译目录
+          cd build/
+
+          # 定义支持的板子列表
+          declare -a SUPPORTED_BOARDS=("fine3399" "fmx1-pro" "r08" "rock960" "sg2710" "tpm312" "xiaobao-nas" "yzd" "zysj")
+
+          # 编译函数
+          compile_board() {
+            local BOARD=$1
+            echo "Compiling for board: $BOARD"
+            ./compile.sh BOARD=$BOARD RELEASE=${{ inputs.RELEASE }} BRANCH=${{ inputs.BRANCH }} \
+              BUILD_MINIMAL=no BUILD_DESKTOP=${{ inputs.BUILD_DESKTOP }} KERNEL_CONFIGURE=no \
+              COMPRESS_OUTPUTIMAGE=${{ inputs.COMPRESS_OUTPUTIMAGE }} BOOT_LOGO=${{ inputs.BOOT_LOGO }} \
+              > "log-${BOARD}.txt" 2>&1
+            if [ $? -ne 0 ]; then
+              echo "Compilation failed for board: $BOARD" >&2
+              echo "=== Log content for $BOARD ===" >&2
+              if [ -f "log-${BOARD}.txt" ]; then
+                cat "log-${BOARD}.txt" >&2
+              else
+                echo "Log file log-${BOARD}.txt not found" >&2
+              fi
+              return 1
+            fi
+            return 0
+          }
+
+          # 多板编译模式
+          compile_all_boards() {
+            FAILED_BOARDS=()
+            for BOARD in "${SUPPORTED_BOARDS[@]}"; do
+              if ! compile_board "$BOARD"; then
+                FAILED_BOARDS+=("$BOARD")
+              fi
+            done
+
+            # 输出失败的板子列表
+            if [ ${#FAILED_BOARDS[@]} -gt 0 ]; then
+              echo "The following boards failed to compile: ${FAILED_BOARDS[*]}" >&2
+            else
+              echo "All boards compiled successfully."
+            fi
+          }
+
+          # 单板编译模式
+          compile_single_board() {
+            local BOARD=${{ inputs.BOARD }}
+            if [[ " ${SUPPORTED_BOARDS[@]} " =~ " $BOARD " ]]; then
+              if ! compile_board "$BOARD"; then
+                echo "Compilation failed for specified board: $BOARD" >&2
+                exit 1
+              fi
+            else
+              echo "Unsupported board: $BOARD" >&2
+              exit 1
+            fi
+          }
+
+          # 判断编译模式
+          if [ "${{ inputs.BOARD }}" = "all" ]; then
+            compile_all_boards
+          else
+            compile_single_board
+          fi   
           
       - name: Set current year and month  
         run: |  
