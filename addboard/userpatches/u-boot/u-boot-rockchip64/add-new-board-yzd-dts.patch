@@ -112,7 +112,7 @@ diff --git a/arch/arm/dts/rk3399-yzd.dts b/arch/arm/dts/rk3399-yzd.dts
 new file mode 100644
 --- /dev/null
 +++ b/arch/arm/dts/rk3399-yzd.dts
-@@ -0,0 +1,908 @@
+@@ -0,0 +1,792 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/dts-v1/;
 +#include <dt-bindings/input/linux-event-codes.h>
