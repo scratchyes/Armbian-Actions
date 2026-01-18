@@ -107,7 +107,7 @@ new file mode 100644
 +
 +&vdd_log {
 +	regulator-init-microvolt = <950000>;
-+};
++};;
 diff --git a/arch/arm/dts/rk3399-yzd.dts b/arch/arm/dts/rk3399-yzd.dts
 new file mode 100644
 --- /dev/null

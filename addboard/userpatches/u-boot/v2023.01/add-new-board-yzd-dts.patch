@@ -100,14 +100,13 @@ diff --git a/arch/arm/dts/rk3399-yzd-u-boot.dtsi b/arch/arm/dts/rk3399-yzd-u-boo
 new file mode 100644
 --- /dev/null
 +++ b/arch/arm/dts/rk3399-yzd-u-boot.dtsi
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,13 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +#include "rk3399-u-boot.dtsi"
 +#include "rk3399-sdram-ddr3-1866.dtsi"
 +
 +/ {
 +	chosen {
-+		stdout-path = "serial2:1500000n8";
 +		u-boot,spl-boot-order = "same-as-spl", &sdhci, &sdmmc;
 +	};
 +};
